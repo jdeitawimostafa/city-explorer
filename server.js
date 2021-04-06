@@ -6,6 +6,10 @@ const dotenv = require('dotenv').config();
 
 const cors = require ('cors');
 
+const pg = require ('pg');
+
+const client = new pg.Client({process.env.DATABASE_URL,ssl: { rejectUnauthorized: false }});
+
 const superagent = require ('superagent');
 
 const server = express();
@@ -23,19 +27,46 @@ server.get('/location',(req,res) => {
   let key = process.env.LOCATION_KEY;
   let locURL = `https://eu1.locationiq.com/v1/search.php?key=${key}&q=${cityName}&format=json`;
 
-  superagent.get(locURL)
-    .then(getData => {
+  let SQL = 'select * from locations where search_query=$1';
+  client.query(SQL,[cityName])
+    .then(data => {
+      if(data.rowCount>0){
+        res.send(data.rows[0]);
+      }
+      else {
+        superagent.get(locURL)
+          .then(getData => {
 
-      let gettedData = getData.body;
-      let locationData = new Location (cityName,gettedData);
-      res.send(locationData);
-    })
+            let gettedData = getData.body;
+            console.log(gettedData);
+            let locationData = new Location (cityName,gettedData);
 
-    .catch(error => {
-      res.send(error);
+
+            let search_query = cityName;
+            let formatted_query = gettedData[0].display_name;
+            let latitude = gettedData[0].lat;
+            let longitude = gettedData[0].lon;
+
+            // console.log('waaaafaa');
+
+            // console.log(locationData);
+
+            let SQL = 'insert into locations (search_query,formatted_query,latitude,longitude) values ($1,$2,$3,$4)';
+            let safeValues = [search_query,formatted_query,latitude,longitude];
+            client.query(SQL,safeValues);
+            res.send(locationData)
+
+              .catch(error => {
+                res.send(error);
+              });
+          })
+
+          .catch(error => {
+            res.send(error);
+          });
+
+      }
     });
-
-
 });
 
 function Location (cityName,keyData) {
@@ -108,6 +139,9 @@ server.get('*',(req,res) => {
   res.status(500).send(errObj);
 });
 
-server.listen(PORT,() =>{
-  console.log(`istining on port ${PORT}`);
-});
+client.connect()
+  .then(() => {
+    server.listen(PORT,() =>{
+      console.log(`istining on port ${PORT}`);
+    });
+  });
