@@ -8,7 +8,7 @@ const cors = require ('cors');
 
 const pg = require ('pg');
 
-const client = new pg.Client({connectionString: process.env.DATABASE_URL,ssl: { rejectUnauthorized: false }});
+const client = new pg.Client({connectionString: process.env.DATABASE_URL,ssl: {rejectUnauthorized: false }});
 
 const superagent = require ('superagent');
 
@@ -54,11 +54,7 @@ server.get('/location',(req,res) => {
             let SQL = 'insert into locations (search_query,formatted_query,latitude,longitude) values ($1,$2,$3,$4)';
             let safeValues = [search_query,formatted_query,latitude,longitude];
             client.query(SQL,safeValues);
-            res.send(locationData)
-
-              .catch(error => {
-                res.send(error);
-              });
+            res.send(locationData);
           })
 
           .catch(error => {
@@ -127,9 +123,72 @@ function handPark (req,res){
     });
 }
 
+function Movie (movieData) {
+  this.title = movieData.original_title;
+  this.overview = movieData.overview ;
+  this.average_votes = movieData.vote_average ;
+  this.total_votes = movieData.vote_count ;
+  this.image_url =`https://image.tmdb.org/t/p/w500${movieData.poster_path}` ;
+  this.popularity = movieData.popularity ;
+  this.released_on = movieData.release_date ;
+}
+
+server.get('/movies',(req,res) => {
+  let MOVIE_API_KEY = process.env.MOVIE_API_KEY;
+  let cityName = req.query.search_query;
+  let movieURL = `https://api.themoviedb.org/3/search/movie?api_key=${MOVIE_API_KEY}&query=${cityName}`;
+
+  superagent.get(movieURL)
+    .then(data => {
+
+      let gettedData = data.body.results;
+
+      let NewData = gettedData.map((items) =>{
+        return new Movie (items);
+      });
+      res.send(NewData);
+    })
+
+    .catch(error => {
+      res.send(error);
+    });
+
+});
+
+function Yelp (yelpData) {
+  this.name = yelpData.name;
+  this.image_url = yelpData.image_url;
+  this.price = yelpData.price;
+  this.rating = yelpData.rating;
+  this.url = yelpData.url;
+}
+
+server.get('/yelp',(req,res) => {
+  let YELP_API_KEY = process.env.YELP_API_KEY;
+  let cityName = req.query.search_query;
+  let page = req.query.page;
+  const resultPerPage = 5;
+  const start = ((page - 1) * resultPerPage + 1);
+  let yelpURL = `https://api.yelp.com/v3/businesses/search?location=${cityName}&limit${resultPerPage}&offset${start}`;
+
+  superagent.get(yelpURL)
+    .set('Authorization',`Bearer ${YELP_API_KEY}`)
+    .then(data => {
+
+      let gettedData = data.body.businesses;
+      let newData = gettedData.map(items => {
+        return new Yelp (items);
+      });
+      res.send(newData);
+    })
+
+    .catch(error => {
+      res.send(error);
+    });
 
 
 
+});
 
 server.get('*',(req,res) => {
   let errObj = {
